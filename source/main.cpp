@@ -58,7 +58,7 @@ Flashcart* selectCart() {
 
     iprintf("<UP/DOWN> Select flashcart\n");
     iprintf("<A> Confirm\n");
-    iprintf("<B> Cancel");
+    iprintf("<B> Exit");
     while (true) {
         consoleSelect(&topScreen);
         consoleClear();
@@ -350,7 +350,7 @@ select_cart:
     while (true) {
         cart = selectCart();
         if (cart == NULL) {
-            continue;
+            return 0;
         }
 
         consoleSelect(&bottomScreen);
@@ -364,7 +364,7 @@ select_cart:
     }
 
     bool support_restore = true;
-    if (!strcmp(cart->getName(), "R4iSDHC family")) {
+    if (!isDSiMode() && !strcmp(cart->getName(), "R4iSDHC family")) {
         support_restore = false;
     }
 
@@ -374,6 +374,7 @@ select_cart:
         goto select_cart;
     }
 
+    bool cartReady = true;
     while (true) {
 flash_menu:
         consoleSelect(&bottomScreen);
@@ -384,9 +385,9 @@ flash_menu:
             iprintf("same type cartridge,\n");
             iprintf("without the SD card.\n\n");
         }
-        iprintf("<A> Inject ntrboot\n");
+        iprintf("\x1B[%02om<A> Inject ntrboot\x1B[47m\n", cartReady ? 047 : 040);
         if (support_restore) {
-            iprintf("<X> Restore flash\n");
+            iprintf("\x1B[%02om<X> Restore flash\x1B[47m\n", cartReady ? 047 : 040);
             iprintf("<Y> Change cartridge\n");
         }
         iprintf("<B> Return\n");
@@ -394,13 +395,20 @@ flash_menu:
         while (true) {
             scanKeys();
             u32 keys = keysDown();
+            if(isDSiMode()) {
+                if(REG_SCFG_MC & BIT(0) && cartReady) {
+                    cartReady = false;
+                    goto flash_menu;
+                }
+            }
+
+            if (keys & KEY_A && cartReady) {
+                inject(cart);
+                break;
+            }
 
             if (support_restore) {
-                if (keys & KEY_A) {
-                    inject(cart);
-                    break;
-                }
-                if (keys & KEY_X) {
+                if (keys & KEY_X && cartReady) {
                     restore(cart);
                     break;
                 }
@@ -409,6 +417,7 @@ flash_menu:
                     do {
                         reset();
                     } while(!cart->initialize());
+                    cartReady = true;
                     goto flash_menu;
                 }
                 if (keys & KEY_B) {
@@ -419,10 +428,6 @@ flash_menu:
                     goto flash_menu;
                 }
             } else {
-                if (keys & KEY_A) {
-                    inject(cart);
-                    break;
-                }
                 if (keys & KEY_B) {
                     cart->shutdown();
                     goto flash_menu;
