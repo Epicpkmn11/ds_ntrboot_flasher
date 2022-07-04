@@ -20,9 +20,6 @@ Only tested with NDSL + AK2I & R4i Gold.
 [ak2ifirm]: https://github.com/ntrteam/ak2ifirm
 
 #### Special `make` options
-* `NDSI_MODE=1`
-  - build DSi compatible mode
-  - disable cart hotswap and load & restore features
 * `DEBUG_DUMP=1`
   - print first 16bytes of loaded flash data
 * `DEBUG_DUMP=2`

@@ -44,12 +44,6 @@ ifneq ($(strip $(DEBUG_PRINT)),)
 	CXXFLAGS += -DDEBUG_PRINT=$(DEBUG_PRINT)
 endif
 
-ifneq ($(strip $(NDSI_MODE)),)
-	CFLAGS += -DNDSI_MODE
-	CXXFLAGS += -DNDSI_MODE
-	TARGET := $(TARGET)_dsi
-endif
-
 ifneq ($(strip $(NO_DEV)),)
 	CFLAGS += -DNO_DEV
 	CXXFLAGS += -DNO_DEV

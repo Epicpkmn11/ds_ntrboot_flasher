@@ -1,9 +1,11 @@
+#include <fat.h>
 #include <nds.h>
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <dirent.h>
 
 #include "device.h"
 
@@ -16,6 +18,8 @@ using namespace flashcart_core;
 // FIXME: not fully overwrite
 u8 orig_flashrom[0xA0000] = {0};
 u8 curr_flashrom[0xA0000] = {0};
+
+char backupPath[PATH_MAX];
 
 PrintConsole topScreen;
 PrintConsole bottomScreen;
@@ -30,14 +34,11 @@ void printBootMessage() {
     iprintf("* Your cart cannot be used  *\n");
     iprintf("* as a flashcart after it   *\n");
     iprintf("* is flashed (except AK2i)  *\n");
-#ifndef NDSI_MODE
-    iprintf("* DO NOT CLOSE THIS APP IF  *\n");
-    iprintf("* YOU WISH TO RESTORE THE   *\n");
-    iprintf("* FLASH                     *\n");
-#else
-    iprintf("* WARNING: ONLY TESTED ON   *\n");
-    iprintf("* 3DS TWL MODE              *\n");
-#endif
+    if(access("sd:/", F_OK) != 0) {
+        iprintf("* DO NOT CLOSE THIS APP IF  *\n");
+        iprintf("* YOU WISH TO RESTORE THE   *\n");
+        iprintf("* FLASH                     *\n");
+    }
     iprintf("* AT YOUR OWN RISK          *\n");
 
     waitPressA();
@@ -57,11 +58,7 @@ Flashcart* selectCart() {
 
     iprintf("<UP/DOWN> Select flashcart\n");
     iprintf("<A> Confirm\n");
-#ifndef NDSI_MODE
     iprintf("<B> Cancel");
-#else
-    iprintf("<B> Exit");
-#endif
     while (true) {
         consoleSelect(&topScreen);
         consoleClear();
@@ -100,34 +97,83 @@ Flashcart* selectCart() {
 u8 dump(Flashcart *cart) {
     consoleSelect(&bottomScreen);
     consoleClear();
-    iprintf("Reading cart flash\n");
+
+    sniprintf(backupPath, PATH_MAX, "sd:/ntrboot/%s-backup.bin", cart->getName());
+
+    bool newBackup = true;
+    if(access(backupPath, F_OK) == 0) {
+        iprintf("Load backup?\nA yes, B no\n");
+        do {
+            swiWaitForVBlank();
+            scanKeys();
+        } while(!(keysDown() & (KEY_A | KEY_B)));
+
+        newBackup = keysDown() & KEY_B;
+    }
 
     // FIXME: we need to check flashcart's data position
     u32 length = cart->getMaxLength();
     if (length > 0xA0000) {
         length = 0xA0000;
     }
-    memset(orig_flashrom, 0, 0xA0000);
-    u8 *temp = orig_flashrom;
 
-    if (!cart->readFlash(0, length, temp)) {
-        return 1;
-    }
+    if(newBackup) {
+        iprintf("Reading cart flash\n");
+
+        memset(orig_flashrom, 0, 0xA0000);
+        u8 *temp = orig_flashrom;
+
+        if (!cart->readFlash(0, length, temp)) {
+            return 1;
+        }
 
 #if defined(DEBUG_DUMP)
-    for (int i = 0; i < length; i+=16) {
-        iprintf("%05X:", i);
-        for (int j = 0; j < 16; j++) {
-            iprintf("%02X", orig_flashrom[i + j]);
-        }
-        iprintf("\n");
+        for (int i = 0; i < length; i+=16) {
+            iprintf("%05X:", i);
+            for (int j = 0; j < 16; j++) {
+                iprintf("%02X", orig_flashrom[i + j]);
+            }
+            iprintf("\n");
 #if DEBUG_DUMP == 2
-        waitPressA();
+            waitPressA();
 #else
-        break;
+            break;
 #endif
+        }
+#endif
+
+        if(access("sd:/", F_OK) == 0 && access(backupPath, F_OK) != 0) {
+            iprintf("\nWriting backup to SD\n");
+            mkdir("sd:/ntrboot", 0777);
+            
+            FILE *backup = fopen(backupPath, "wb");
+            bool success = false;
+            if(backup) {
+                success = (fwrite(orig_flashrom, 1, length, backup) == length);
+                fclose(backup);
+            }
+
+            if(!success) {
+                iprintf("BACKUP FAILED!\n");
+                for(int i = 0; i < 60; i++)
+                    swiWaitForVBlank();
+            }
+        } else {
+            if(access("sd:/", F_OK) == 0)
+                iprintf("\nBackup already exists!\n");
+            else
+                iprintf("\nCannot save backup! (No SD)\n");
+            for(int i = 0; i < 60; i++)
+                swiWaitForVBlank();
+        }
+    } else {
+        FILE *backup = fopen(backupPath, "rb");
+        if(backup) {
+            fread(orig_flashrom, 1, length, backup);
+            fclose(backup);
+        }
     }
-#endif
+
     return 0;
 }
 
@@ -287,6 +333,9 @@ int main(void) {
 	vramSetBankA(VRAM_A_MAIN_BG);
 	vramSetBankC(VRAM_C_SUB_BG);
 
+    if(isDSiMode())
+        fatInitDefault();
+
     consoleInit(&topScreen, 3,BgType_Text4bpp, BgSize_T_256x256, 31, 0, true, true);
 	consoleInit(&bottomScreen, 3,BgType_Text4bpp, BgSize_T_256x256, 31, 0, false, true);
 
@@ -301,11 +350,7 @@ select_cart:
     while (true) {
         cart = selectCart();
         if (cart == NULL) {
-#ifdef NDSI_MODE
-            return 0;
-#else
             continue;
-#endif
         }
 
         consoleSelect(&bottomScreen);
@@ -319,7 +364,6 @@ select_cart:
     }
 
     bool support_restore = true;
-#ifndef NDSI_MODE
     if (!strcmp(cart->getName(), "R4iSDHC family")) {
         support_restore = false;
     }
@@ -329,50 +373,33 @@ select_cart:
         waitPressA();
         goto select_cart;
     }
-#else
-    support_restore = false;
-#endif
 
     while (true) {
 flash_menu:
         consoleSelect(&bottomScreen);
         consoleClear();
-#ifndef NDSI_MODE
         if (support_restore) {
             iprintf("SUPPORT RESTORE\n");
             iprintf("You can swap another\n");
             iprintf("same type cartridge,\n");
             iprintf("without the SD card.\n\n");
         }
-#endif
-        if (!support_restore) {
-            iprintf("NOT SUPPORT RESTORE\n");
-            iprintf("Flashcart functionality will\n");
-            iprintf("be lost.\n\n");
-        }
-
-        iprintf("<A> Inject ntrboothax\n");
-#ifndef NDSI_MODE
+        iprintf("<A> Inject ntrboot\n");
         if (support_restore) {
             iprintf("<X> Restore flash\n");
             iprintf("<Y> Change cartridge\n");
         }
         iprintf("<B> Return\n");
-#else
-        iprintf("<B> Exit\n");
-#endif
 
         while (true) {
             scanKeys();
             u32 keys = keysDown();
 
-            if (keys & KEY_A) {
-                inject(cart);
-                break;
-            }
-
-#ifndef NDSI_MODE
             if (support_restore) {
+                if (keys & KEY_A) {
+                    inject(cart);
+                    break;
+                }
                 if (keys & KEY_X) {
                     restore(cart);
                     break;
@@ -385,24 +412,22 @@ flash_menu:
                     goto flash_menu;
                 }
                 if (keys & KEY_B) {
-                    if (waitConfirmLostDump()) {
+                    if (access(backupPath, F_OK) == 0 || waitConfirmLostDump()) {
                         cart->shutdown();
                         goto select_cart;
                     }
                     goto flash_menu;
                 }
             } else {
+                if (keys & KEY_A) {
+                    inject(cart);
+                    break;
+                }
                 if (keys & KEY_B) {
                     cart->shutdown();
                     goto flash_menu;
                 }
             }
-#else
-            if (keys & KEY_B) {
-                cart->shutdown();
-                return 0;
-            }
-#endif
             swiWaitForVBlank();
         }
     }
