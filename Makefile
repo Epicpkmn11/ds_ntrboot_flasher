@@ -50,6 +50,11 @@ ifneq ($(strip $(NDSI_MODE)),)
 	TARGET := $(TARGET)_dsi
 endif
 
+ifneq ($(strip $(NO_DEV)),)
+	CFLAGS += -DNO_DEV
+	CXXFLAGS += -DNO_DEV
+endif
+
 ASFLAGS	:=	-g $(ARCH)
 LDFLAGS	=	-specs=ds_arm9.specs -g $(ARCH) -Wl,-Map,$(notdir $*.map)
 

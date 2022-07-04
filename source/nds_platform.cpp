@@ -88,12 +88,14 @@ void platform::initBlowfishPS(uint32_t (&ps)[ntrcard::BLOWFISH_PS_N], ntrcard::B
             }
             ptr = blowfish_retail_bin;
             break;
+#ifndef NO_DEV
         case ntrcard::BlowfishKey::B9DEV:
             if (blowfish_dev_bin_size != sizeof(ps)) {
                 return;
             }
             ptr = blowfish_dev_bin;
             break;
+#endif
     }
 
     memcpy(ps, ptr, sizeof(ps));

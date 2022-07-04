@@ -29,6 +29,8 @@ Only tested with NDSL + AK2I & R4i Gold.
   - print all bytes of loaded flash data
 * `DEBUG_PRINT=1`
   - enable flashcart_core's log message
+* `NO_DEV=1`
+  - build without devkit support, when this is used `blowfish_dev.bin` and `boot9strap_ntr_dev.firm` are not required
 
 ### Credits
 * [Normmatt][normmatt] - Original implementation of the 3DS version ntrcardhax flasher.

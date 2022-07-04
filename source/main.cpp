@@ -137,7 +137,11 @@ int8_t selectDeviceType() {
 
     iprintf("Select 3DS device type\n\n");
     iprintf("<A> RETAIL\n");
+#ifndef NO_DEV
     iprintf("<X> DEV\n");
+#else
+    iprintf("\x1B[40m<X> DEV\x1B[47m\n");
+#endif
     iprintf("<B> Cancel");
 
     while (true) {
@@ -146,9 +150,11 @@ int8_t selectDeviceType() {
         if (keys & KEY_A) {
             return 0;
         }
+#ifndef NO_DEV
         if (keys & KEY_X) {
             return 1;
         }
+#endif
         if (keys & KEY_B) {
             return -1;
         }
@@ -158,13 +164,23 @@ int8_t selectDeviceType() {
 
 int inject(Flashcart *cart) {
     int8_t deviceType = selectDeviceType();
+#ifndef NO_DEV
     if (deviceType < 0) {
+#else
+    if (deviceType != 0) {
+#endif
         return -1;
     }
 
+#ifndef NO_DEV
     u8 *blowfish_key = deviceType ? blowfish_dev_bin : blowfish_retail_bin;
     u8 *firm = deviceType ? boot9strap_ntr_dev_firm : boot9strap_ntr_firm;
     u32 firm_size = deviceType ? boot9strap_ntr_dev_firm_size : boot9strap_ntr_firm_size;
+#else
+    u8 *blowfish_key = blowfish_retail_bin;
+    u8 *firm = boot9strap_ntr_firm;
+    u32 firm_size = boot9strap_ntr_firm_size;
+#endif
 
     consoleSelect(&bottomScreen);
     consoleClear();
